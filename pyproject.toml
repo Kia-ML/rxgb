@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rxgb"
-version = "0.1.0"
+version = "0.1.1"
 description = "RXGB: A bagging ensemble of shallow XGBoost learners for classification and regression"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -30,7 +30,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Kia_ML/rxgb"
+Homepage = "https://github.com/Kia-ML/rxgb"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
