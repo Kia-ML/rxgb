@@ -36,7 +36,7 @@ from .core import (
     DeepRXGBRegressor
 )
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 __author__ = "Kiarash Nouri"
 __email__ = "kiarash.nr.ml@gmail.com"
 
