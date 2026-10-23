@@ -1,7 +1,7 @@
-"""Automated tests for the RXGB library."""
+"""Automated tests for the RXGB library (v0.2.2)."""
 import numpy as np
 import pytest
-from sklearn.datasets import load_iris, make_regression
+from sklearn.datasets import load_iris, make_regression, make_classification
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, r2_score
 
@@ -22,7 +22,7 @@ class TestRXGBClassifier:
         preds = model.predict(X_test)
         
         assert len(preds) == len(y_test)
-        assert accuracy_score(y_test, preds) > 0.8  # Expect at least 80% accuracy
+        assert accuracy_score(y_test, preds) > 0.8
 
     def test_predict_proba(self):
         """Test that predicted probabilities sum to 1."""
@@ -33,6 +33,21 @@ class TestRXGBClassifier:
         
         # Sum of probabilities for each sample should be 1.0
         np.testing.assert_allclose(proba.sum(axis=1), 1.0, rtol=1e-5)
+
+    def test_multiclass_dynamic_strategy(self):
+        """Test that the model handles 5-class data (Dynamic Strategy) correctly."""
+        # Generating a difficult 5-class dataset (similar to our benchmarks)
+        X, y = make_classification(
+            n_samples=500, n_features=20, n_informative=15, 
+            n_classes=5, random_state=42
+        )
+        model = RXGBClassifier(n_estimators=5, max_depth=3)
+        model.fit(X, y)
+        preds = model.predict(X)
+        
+        # Assert that it predicts multiple classes successfully
+        assert len(np.unique(preds)) > 2
+        assert accuracy_score(y, preds) > 0.5
 
     def test_string_labels(self):
         """Test that the classifier handles string labels correctly."""
@@ -66,6 +81,17 @@ class TestRXGBClassifier:
         
         np.testing.assert_array_equal(m1.predict(X), m2.predict(X))
 
+    def test_float32_conversion(self):
+        """Test that the model handles float64 inputs (converts to float32 internally)."""
+        X, y = load_iris(return_X_y=True)
+        X_float64 = X.astype(np.float64)
+        
+        model = RXGBClassifier(n_estimators=5)
+        model.fit(X_float64, y)
+        preds = model.predict(X_float64)
+        
+        assert len(preds) == len(y)
+
 
 class TestRXGBRegressor:
     """Tests for RXGBRegressor."""
@@ -81,7 +107,7 @@ class TestRXGBRegressor:
         model.fit(X_train, y_train)
         preds = model.predict(X_test)
         
-        assert r2_score(y_test, preds) > 0.5  # Expect a reasonable R2 score
+        assert r2_score(y_test, preds) > 0.5
 
     def test_numeric_y_only(self):
         """Test that regression with string y raises a ValueError."""
