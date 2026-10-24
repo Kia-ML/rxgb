@@ -23,7 +23,7 @@ from .core import (
     RXGBRegressor
 )
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 __author__ = "Kiarash Nouri"
 __email__ = "kiarash.nr.ml@gmail.com"
 
