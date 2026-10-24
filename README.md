@@ -90,6 +90,7 @@ Note: RXGB achieves a highly competitive F1-score without any hyperparameter tun
 | `inner_n_estimators` | `50` | Number of boosting rounds inside each XGBoost base learner. |
 | `max_samples` | `0.8` | Fraction of training samples drawn for each base learner. |
 | `max_features` | `0.8` | Fraction of input features selected for each base learner. |
+| `dynamic_weighting` | `True` | If True, uses a meta-learner (Attention) to dynamiclly weight predictions. Recommended for noisy data. |
 | `n_jobs` | `None` | Number of parallel jobs; `-1` requests all available processors. |
 | `random_state` | `42` | Random seed for reproducibility. |
 
