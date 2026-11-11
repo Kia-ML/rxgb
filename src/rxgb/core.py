@@ -107,6 +107,9 @@ class _RXGBBase(BaseEstimator):
             raise ValueError(f"X and y have inconsistent lengths: {X.shape[0]} vs {len(y)}")
         return X, y
 
+    # Backwards-compatible alias used by the existing regressor implementation.
+    _validate_input = validate_input
+
 
 class RXGBClassifier(_RXGBBase, ClassifierMixin):
     """RXGB Classifier: A robust ensemble of shallow XGBoost classifiers.
@@ -178,6 +181,21 @@ class RXGBClassifier(_RXGBBase, ClassifierMixin):
     >>> print(f"Accuracy: {accuracy_score(y_test, preds):.4f}")
     """
 
+    def _validate_classifier_parameters(self):
+        """Validate parameters that control classifier ensemble construction."""
+        for name in ("n_estimators", "inner_n_estimators", "max_depth"):
+            value = getattr(self, name)
+            if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)) or value < 1:
+                raise ValueError(f"{name} must be a positive integer, got {value!r}")
+
+        for name in ("max_samples", "max_features"):
+            value = getattr(self, name)
+            if not isinstance(value, (int, float, np.integer, np.floating)) or not 0 < value <= 1:
+                raise ValueError(f"{name} must be in the interval (0, 1], got {value!r}")
+
+        if not isinstance(self.dynamic_weighting, (bool, np.bool_)):
+            raise ValueError("dynamic_weighting must be a boolean")
+
     def fit(self, X, y):
         """Fit the RXGB classifier to the training data.
 
@@ -194,11 +212,23 @@ class RXGBClassifier(_RXGBBase, ClassifierMixin):
         self : RXGBClassifier
             Fitted classifier.
         """
-        X, y = self._validate_input(X, y)
+        X, y = self.validate_input(X, y)
+        self._validate_classifier_parameters()
+
         self.classes_, y_encoded = np.unique(y, return_inverse=True)
         n_classes = len(self.classes_)
-        
+        if n_classes < 2:
+            raise ValueError("y must contain at least two distinct classes")
+
         n, p = X.shape
+        self.n_features_in_ = p
+        sample_size = max(1, int(self.max_samples * n))
+        if sample_size < n_classes:
+            raise ValueError(
+                "max_samples is too small to include every class in a base learner; "
+                "increase max_samples or provide more training samples"
+            )
+
         rng = np.random.RandomState(self.random_state)
         self.models_ = []
         self.features_ = []
@@ -206,11 +236,18 @@ class RXGBClassifier(_RXGBBase, ClassifierMixin):
         if self.dynamic_weighting:
             meta_features = np.zeros((n, self.n_estimators * n_classes), dtype=np.float32)
 
-        sample_size = int(self.max_samples * n)
         feature_size = max(1, int(self.max_features * p))
+        class_indices = [np.flatnonzero(y_encoded == class_id) for class_id in range(n_classes)]
+        class_probabilities = np.bincount(y_encoded, minlength=n_classes) / n
 
         for i in range(self.n_estimators):
-            idx = rng.choice(n, size=sample_size, replace=True)
+            # Stratified bootstrap: guarantee that every base learner sees every class.
+            class_draws = rng.multinomial(sample_size - n_classes, class_probabilities) + 1
+            idx = np.concatenate([
+                rng.choice(indices, size=draws, replace=True)
+                for indices, draws in zip(class_indices, class_draws)
+            ])
+            rng.shuffle(idx)
             feats = rng.choice(p, size=feature_size, replace=False)
             
             model = XGBClassifier(
@@ -218,8 +255,8 @@ class RXGBClassifier(_RXGBBase, ClassifierMixin):
                 max_depth=self.max_depth,
                 learning_rate=self.learning_rate,
                 n_jobs=self.n_jobs,
-                random_state=self.random_state + i,
-                eval_metric='logloss',
+                random_state=int(rng.randint(np.iinfo(np.int32).max)),
+                eval_metric='logloss' if n_classes == 2 else 'mlogloss',
             )
             
             model.fit(X[np.ix_(idx, feats)], y_encoded[idx])
@@ -255,7 +292,16 @@ class RXGBClassifier(_RXGBBase, ClassifierMixin):
         proba : ndarray of shape (n_samples, n_classes)
             The predicted class probabilities.
         """
+        if not hasattr(self, "classes_"):
+            raise ValueError("This RXGBClassifier instance is not fitted yet. Call 'fit' before prediction.")
         X = np.asarray(X, dtype=np.float32)
+        if X.ndim != 2:
+            raise ValueError(f"X must be 2D, got shape {X.shape}")
+        if X.shape[1] != self.n_features_in_:
+            raise ValueError(
+                f"X has {X.shape[1]} features, but RXGBClassifier was fitted with "
+                f"{self.n_features_in_} features"
+            )
         n_classes = len(self.classes_)
         
         if self.dynamic_weighting:

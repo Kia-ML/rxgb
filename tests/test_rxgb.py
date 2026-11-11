@@ -81,6 +81,51 @@ class TestRXGBClassifier:
         
         np.testing.assert_array_equal(m1.predict(X), m2.predict(X))
 
+    def test_rare_class_is_present_in_every_base_learner(self):
+        """Bootstrap sampling must not silently drop a minority class."""
+        X = np.random.RandomState(0).normal(size=(30, 4))
+        y = np.array(["common"] * 29 + ["rare"])
+
+        model = RXGBClassifier(n_estimators=4, max_samples=0.5, random_state=7)
+        model.fit(X, y)
+
+        assert len(model.classes_) == 2
+        assert all(np.array_equal(estimator.classes_, np.array([0, 1]))
+                   for estimator in model.models_)
+        assert model.predict_proba(X[:5]).shape == (5, 2)
+
+    def test_rejects_single_class_target(self):
+        X = np.random.RandomState(0).normal(size=(20, 3))
+        y = np.zeros(20, dtype=int)
+        with pytest.raises(ValueError, match="at least two distinct classes"):
+            RXGBClassifier(n_estimators=2).fit(X, y)
+
+    @pytest.mark.parametrize("kwargs", [
+        {"n_estimators": 0},
+        {"inner_n_estimators": 0},
+        {"max_depth": 0},
+        {"max_samples": 0},
+        {"max_samples": 1.1},
+        {"max_features": 0},
+        {"max_features": 1.1},
+    ])
+    def test_rejects_invalid_parameters(self, kwargs):
+        X, y = load_iris(return_X_y=True)
+        with pytest.raises(ValueError):
+            RXGBClassifier(**kwargs).fit(X, y)
+
+    def test_rejects_bootstrap_smaller_than_number_of_classes(self):
+        X = np.random.RandomState(0).normal(size=(12, 3))
+        y = np.array([0, 1, 2] * 4)
+        with pytest.raises(ValueError, match="too small to include every class"):
+            RXGBClassifier(n_estimators=2, max_samples=0.1).fit(X, y)
+
+    def test_predict_proba_rejects_wrong_feature_count(self):
+        X, y = load_iris(return_X_y=True)
+        model = RXGBClassifier(n_estimators=2).fit(X, y)
+        with pytest.raises(ValueError, match="features"):
+            model.predict_proba(X[:, :2])
+
     def test_float32_conversion(self):
         """Test that the model handles float64 inputs (converts to float32 internally)."""
         X, y = load_iris(return_X_y=True)
